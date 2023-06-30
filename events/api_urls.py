@@ -1,4 +1,5 @@
 from django.urls import path
+from common.json import ModelEncoder
 
 from .api_views import (
     api_list_conferences,
