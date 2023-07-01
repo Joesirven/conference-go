@@ -3,6 +3,7 @@ from django.views.decorators.http import require_http_methods
 from .models import Conference, Location, State
 from common.json import ModelEncoder
 import json
+from .acls import pexel_pic_url, get_weather_data
 
 
 class LocationDetailEncoder(ModelEncoder):
@@ -14,12 +15,11 @@ class LocationDetailEncoder(ModelEncoder):
         "created",
         "updated",
         "room_count",
+        "picture_url",
     ]
 
     def get_extra_data(self, o):
-        return {
-            "state": o.state.abbreviation,
-        }
+        return {"state": o.state.abbreviation}
 
 
 class LocationListEncoder(ModelEncoder):
@@ -43,6 +43,10 @@ class ConferenceDetailEncoder(ModelEncoder):
         "location",
     ]
     encoders = {"location": LocationListEncoder()}
+
+    # def get_extra_data(self, o):
+    #     weather = get_weather_data(o.location.city, o.location.state)
+    #     return {"weather": weather}
 
 
 class ConferenceListEncoder(ModelEncoder):
@@ -74,13 +78,6 @@ def api_list_conferences(request):
     """
     if request.method == "GET":
         conferences = Conference.objects.all()
-        # for conference in conferences:
-        #     response.append(
-        #         {
-        #             "name": conference.name,
-        #             "href": conference.get_api_url(),
-        #         }
-        #     )
         return JsonResponse(
             {"conferences": conferences},
             encoder=ConferenceListEncoder,
@@ -132,9 +129,21 @@ def api_show_conference(request, id):
     """
     if request.method == "GET":
         conference = Conference.objects.get(id=id)
+        weather = get_weather_data(
+            conference.location.city, conference.location.state
+        )
+        location = Location.objects.all()[0]
+        print(location)
+        encoders = MultipleJsonEncoders(
+            LocationDetailEncoder, ConferenceDetailEncoder
+        )
         return JsonResponse(
-            conference,
-            encoder=ConferenceDetailEncoder,
+            {
+                "weather": weather,
+                "conference": conference,
+                "location": location,
+            },
+            encoder=encoders,
             safe=False,
         )
     elif request.method == "DELETE":
@@ -198,6 +207,11 @@ def api_list_locations(request):
                 {"message": "Invalid state abbreviation"},
                 status=400,
             )
+        picture_url = pexel_pic_url(
+            city=content["city"],
+            state=content["state"],
+        )
+        content["picture_url"] = picture_url
         location = Location.objects.create(**content)
         return JsonResponse(
             location,
